@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbital Sentinel — Advanced Space Safety Engine</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS
+    ============================================================ */
+    :root {
+      --bg-base: #010204;
+      --bg-panel: rgba(8, 14, 25, 0.85);
+      --bg-solid: #060a12;
+      --border-line: rgba(255, 255, 255, 0.12);
+      
+      --text-prim: #f8fafc;
+      --text-sec: #94a3b8;
+      
+      --c-safe: #10b981;
+      --c-caution: #f59e0b;
+      --c-high: #ef4444;
+      --c-crit: #dc2626;
+      --c-info: #0ea5e9;
+      --c-neon: #00d4ff;
+      
+      --font-sys: 'Inter', system-ui, sans-serif;
+      --font-mon: 'JetBrains Mono', monospace;
+      
+      --sidebar-width: 280px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100vw; height: 100vh; overflow: hidden; background: var(--bg-base); color: var(--text-prim); font-family: var(--font-sys); -webkit-font-smoothing: antialiased; }
+
+    /* Layout Skeleton - STRICTLY ENFORCED FLEX LAYOUT */
+    #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; }
+    
+    header {
+      height: 52px; background: var(--bg-solid); border-bottom: 1px solid var(--border-line); 
+      display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 50; flex-shrink: 0;
+    }
+    
+    .brand { display: flex; align-items: baseline; gap: 12px; font-weight: 700; letter-spacing: 1px; font-size: 15px; color: var(--text-prim); }
+    .brand span { font-size: 11px; color: var(--text-sec); font-weight: 500; font-family: var(--font-mon); letter-spacing: 0.5px; }
+    .status { display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: var(--font-mon); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3); color: var(--c-safe); background: rgba(16,185,129,0.1); font-weight: 600; }
+    .status.sim { color: var(--c-caution); border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.1); }
+
+    #main-content {
+      flex: 1; display: flex; flex-direction: row; overflow: hidden; position: relative; width: 100vw;
+    }
+
+    aside.sidebar {
+      width: var(--sidebar-width); flex-shrink: 0; /* Prevents squashing */
+      background: var(--bg-panel); backdrop-filter: blur(10px);
+      display: flex; flex-direction: column; padding: 20px; gap: 20px; z-index: 10;
+      overflow-y: auto;
+    }
+    aside.sidebar::-webkit-scrollbar { width: 3px; }
+    aside.sidebar::-webkit-scrollbar-thumb { background: var(--border-line); }
+
+    #sidebar-left { border-right: 1px solid var(--border-line); }
+    #sidebar-right { border-left: 1px solid var(--border-line); }
+
+    /* The middle canvas bucket! Must fill remaining space */
+    #viewport-container {
+      flex: 1; position: relative; min-width: 0; background: radial-gradient(circle at center, #0a1120 0%, #010204 100%);
+    }
+    #globe-canvas {
+      position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; outline: none; cursor: crosshair; z-index: 5;
+    }
+
+    /* Typography & Sidebar Layout Elements */
+    .sec-title {
+      font-size: 10px; font-weight: 700; color: var(--text-sec); letter-spacing: 1.5px; text-transform: uppercase;
+      border-bottom: 1px solid var(--border-line); padding-bottom: 6px; display: block; margin-bottom: 8px;
+    }
+    
+    .data-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 10px; }
+    .data-row .lbl { color: var(--text-sec); }
+    .data-row .val { font-family: var(--font-mon); font-size: 13px; font-weight: 500; color: var(--text-prim); }
+
+    /* Floating Viewport Overlays */
+    .toolbar { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: flex-end; gap: 8px; pointer-events: none; z-index: 20; }
+    .btn {
+      background: var(--bg-panel); border: 1px solid var(--border-line); color: var(--text-sec);
+      font-size: 11px; font-family: var(--font-mon); padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; pointer-events: auto; backdrop-filter: blur(5px);
+    }
+    .btn:hover { color: var(--text-prim); border-color: var(--text-sec); }
+    .btn.act { color: var(--c-neon); border-color: rgba(0, 212, 255, 0.4); background: rgba(0, 212, 255, 0.05); }
+
+    /* Center ISS HUD Box */
+    #iss-mark { position: absolute; display: none; align-items: center; gap: 8px; pointer-events: none; z-index: 10; margin-top: -12px; margin-left: 12px; }
+    #iss-mark .dot { width: 8px; height: 8px; background: #fff; border-radius: 50%; box-shadow: 0 0 12px #fff; border: 2px solid var(--c-neon); }
+    #iss-mark .lbl-box { display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border-line); border-left: 2px solid var(--c-neon); padding: 6px 8px; border-radius: 4px; backdrop-filter: blur(4px); }
+    #iss-mark .lbl-box strong { font-size: 11px; font-weight: 700; color: var(--text-prim); }
+    #iss-mark .lbl-box span { font-size: 9px; font-family: var(--font-mon); color: var(--c-neon); }
+    
+    /* Conjunction Risk Panel Styles */
+    .threat-banner {
+      border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.1); border-radius: 4px;
+      padding: 10px; display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+    }
+    .threat-banner.red { border-color: rgba(239,68,68,0.5); background: rgba(239,68,68,0.15); animation: alertPulse 1.5s infinite; }
+    .threat-banner.amber { border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.15); }
+    
+    @keyframes alertPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 10px rgba(239,68,68,0.2); } }
+    
+    .threat-icon { width: 12px; height: 12px; border-radius: 50%; background: var(--c-safe); }
+    .threat-banner.red .threat-icon { background: var(--c-high); box-shadow: 0 0 8px var(--c-high); }
+    .threat-banner.amber .threat-icon { background: var(--c-caution); box-shadow: 0 0 8px var(--c-caution); }
+    .threat-msg { font-size: 12px; font-weight: 600; font-family: var(--font-mon); color: var(--c-safe); }
+    .threat-banner.red .threat-msg { color: var(--c-high); }
+    .threat-banner.amber .threat-msg { color: var(--c-caution); }
+
+    .obj-card { background: rgba(255,255,255,0.02); border-left: 2px solid var(--c-info); padding: 8px; margin-bottom: 6px; border-radius: 0 4px 4px 0; font-size: 11px; }
+    .obj-card.danger { border-left-color: var(--c-high); background: rgba(239,68,68,0.05); }
+
+    #boot-screen {
+      position: fixed; inset: 0; background: var(--bg-base); z-index: 9999;
+      display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s;
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Startup Boot Splash Screen -->
+  <div id="boot-screen">
+    <div style="font-size:24px; font-weight:700; letter-spacing:3px; margin-bottom:8px;">ORBITAL SENTINEL</div>
+    <div style="font-size:12px; font-family:var(--font-mon); color:var(--c-neon);">DIGITAL TWIN ENGINE CALIBRATING...</div>
+  </div>
+
+  <div id="app">
+    
+    <header>
+      <div class="brand">ORBITAL SENTINEL <span>/ LIVE TELEMETRY TRACKING</span></div>
+      <div style="font-family:var(--font-mon); font-size:14px; font-weight:600;" id="m-clock">T+00:00:00</div>
+      <div class="status" id="sys-status">● DATA LINK ESTABLISHED</div>
+    </header>
+    
+    <div id="main-content">
+      
+      <!-- LEFT SIDEBAR -->
+      <aside class="sidebar" id="sidebar-left">
+        <div>
+          <span class="sec-title">Flight Dynamics</span>
+          <div class="data-row"><span class="lbl">Latitude</span><span class="val" id="ui-lat">00.00°</span></div>
+          <div class="data-row"><span class="lbl">Longitude</span><span class="val" id="ui-lon">00.00°</span></div>
+          <div class="data-row"><span class="lbl">Altitude</span><span class="val"><span id="ui-alt">0</span> km</span></div>
+          <div class="data-row"><span class="lbl">Velocity</span><span class="val"><span id="ui-vel">0.00</span> km/s</span></div>
+          <div class="data-row"><span class="lbl">Illumination</span><span class="val text-info" id="ui-vis">Evaluating...</span></div>
+        </div>
+        
+        <div>
+          <span class="sec-title">Orbital Envelope</span>
+          <div class="data-row"><span class="lbl">Beta Angle</span><span class="val" id="ui-beta" style="color:var(--c-caution)">0.0°</span></div>
+          <div class="data-row"><span class="lbl">Epoch Cycle</span><span class="val" id="ui-orb">0</span></div>
+          <div class="data-row"><span class="lbl">Regional Proximity</span><span class="val text-info" style="font-family:var(--font-sys);font-size:12px;" id="ui-loc">Scanning...</span></div>
+        </div>
+
+        <div style="flex:1; display:flex; flex-direction:column;">
+          <span class="sec-title">Agent Analysis (ARIA)</span>
+          <div style="flex:1; border:1px solid var(--border-line); background:var(--bg-base); border-radius:4px; display:flex; flex-direction:column; overflow:hidden;">
+            <div id="ai-chat" style="flex:1; padding:10px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; font-size:11px;">
+              <div style="color:var(--c-info); font-family:var(--font-mon);">> SYSTEM ONLINE</div>
+            </div>
+            <div style="display:flex; border-top:1px solid var(--border-line);">
+              <input id="ai-in" type="text" placeholder="Query agent..." style="flex:1; border:none; background:transparent; padding:10px; font-size:12px; color:#fff; font-family:var(--font-sys); outline:none;" onkeydown="if(event.key==='Enter') pushAI();">
+              <button class="btn" style="border:none; border-radius:0; border-left:1px solid var(--border-line);" onclick="pushAI()">SEND</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 3D CENTER VIEWPORT -->
+      <div id="viewport-container">
+        
+        <div class="toolbar">
+          <button class="btn" onclick="R_CAM()">RECEN CAM</button>
+          <button class="btn act" id="b-trl" onclick="TG('trl')">TOGGLE PATH</button>
+          <button class="btn act" style="border-color:var(--c-high); color:var(--c-high);" id="b-deb" onclick="TG('deb')">SPACE DEBRIS RADAR</button>
+        </div>
+
+        <div id="iss-mark">
+          <div class="dot"></div>
+          <div class="lbl-box">
+            <strong>ISS ALPHA</strong>
+            <span id="iss-sm-alt">420km HZ</span>
+          </div>
+        </div>
+
+        <canvas id="globe-canvas"></canvas>
+      </div>
+
+      <!-- RIGHT SIDEBAR -->
+      <aside class="sidebar" id="sidebar-right">
+        <div>
+          <span class="sec-title" style="display:flex;justify-content:space-between">Conjunction Risk <span style="color:var(--c-neon);">SIM MODEL</span></span>
+          <div id="s-banner" class="threat-banner">
+            <div id="s-icn" class="threat-icon"></div>
+            <div id="s-msg" class="threat-msg">NO CONJUNCTION DETECTED</div>
+          </div>
+        </div>
+        
+        <div>
+          <span class="sec-title">Immediate Object Tracker</span>
+          <div class="data-row"><span class="lbl">Asset Hash</span><span class="val text-info" id="cp-id">STANDBY</span></div>
+          <div class="data-row"><span class="lbl">Rel Distance</span><span class="val" id="cp-dst">-- km</span></div>
+          <div class="data-row"><span class="lbl">Vector Delta</span><span class="val" id="cp-vel">-- km/s</span></div>
+          <div class="data-row"><span class="lbl">C.P.A. Minimum</span><span class="val" id="cp-cpa">-- km</span></div>
+        </div>
+
+        <div style="flex:1; display:flex; flex-direction:column;">
+          <span class="sec-title" style="display:flex; justify-content:space-between;">Watchlist Alerts <span id="queue-size">0 Objects</span></span>
+          <div id="alert-board" style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
+            <div style="font-size:11px; color:var(--text-sec); font-style:italic;">Scanning sector parameters...</div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <script>
+    /**===========================================================
+     * STATE MANAGEMENT & TIMING
+     ===========================================================*/
+    const ST = {
+      isSim: false,
+      fl: { trl: true, deb: true }, // Flags for toggles
+      data: { lat: 0, lon: 0, alt: 420, v: 27500, vis: 'Day', hp: [] },
+      startUnix: Date.now(),
+      m: { x:0, y:0, isDn:false, lstX:0, lstY:0 },
+      cAm: { rx:0, ry:Math.PI/2, rz: 2.1, tx:0, ty:Math.PI/2, tz:2.1 } // Camera Lerp params
+    };
+
+    const gQ = i => document.getElementById(i);
+    const setHtml = (i, t) => gQ(i) && (gQ(i).innerHTML = t);
+    
+    // Toggle Actions
+    const R_CAM = () => { ST.cAm.tx = 0; ST.cAm.ty = Math.PI/2; ST.cAm.tz = 2.1; };
+    const TG = k => { ST.fl[k]=!ST.fl[k]; gQ('b-'+k).classList.toggle('act', ST.fl[k]); };
+
+    // Header Clock 
+    setInterval(() => {
+      let t = Math.floor((Date.now()-ST.startUnix)/1000);
+      setHtml('m-clock', `T+${Math.floor(t/3600).toString().padStart(2,'0')}:${Math.floor((t%3600)/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`);
+    }, 1000);
+
+    /**===========================================================
+     * 3D GLOBE ENGINE (REBUILT FOR 60FPS DIGITAL TWIN AESTHETIC)
+     ===========================================================*/
+    let _scn, _cam, _ren, _isg;
+    let _TrGrp, _DbGrp;
+    const D_LIM = 45; // Max space objects mapped 
+
+    function INIT_GLB() {
+      const VC = gQ('viewport-container');
+      const cv = gQ('globe-canvas');
+
+      _scn = new THREE.Scene();
+      _cam = new THREE.PerspectiveCamera(45, VC.clientWidth/VC.clientHeight, 0.1, 50);
+      
+      _ren = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+      _ren.setPixelRatio(window.devicePixelRatio);
+      _ren.setSize(VC.clientWidth, VC.clientHeight, false);
+
+      /** DESIGN: Wireframe Tactical Earth (Zero load-times, pure performant GL geometry) */
+      
+      // The wireframe structure 
+      const ewMat = new THREE.MeshBasicMaterial({ color: 0x0ea5e9, wireframe: true, transparent: true, opacity: 0.15 });
+      const earM = new THREE.Mesh(new THREE.SphereGeometry(1.0, 36, 18), ewMat);
+      
+      // Deep inner solid core so wireframe looks spherical and solid 
+      const crMat = new THREE.MeshBasicMaterial({ color: 0x010309 }); 
+      const corM = new THREE.Mesh(new THREE.SphereGeometry(0.98, 16, 16), crMat);
+      
+      _scn.add(earM); _scn.add(corM);
+
+      // Lat/Lon Rings for flair
+      const equatGeo = new THREE.BufferGeometry().setFromPoints(new Array(65).fill(0).map((_,i)=>new THREE.Vector3(Math.cos(i/64*Math.PI*2),0,Math.sin(i/64*Math.PI*2))));
+      _scn.add(new THREE.Line(equatGeo, new THREE.LineBasicMaterial({color: 0x0ea5e9, transparent:true, opacity:0.3})));
+
+      /** THE ISS DOT **/
+      _isg = new THREE.Group();
+      _isg.add(new THREE.Mesh(new THREE.SphereGeometry(0.015,12,12), new THREE.MeshBasicMaterial({color: 0xffffff}))); // ISS core
+      // Glow Ring 
+      _isg.rng = new THREE.Mesh(new THREE.RingGeometry(0.02, 0.026, 32), new THREE.MeshBasicMaterial({color: 0x00d4ff, transparent: true, side: THREE.DoubleSide, opacity:0.8}));
+      _isg.add(_isg.rng);
+      _scn.add(_isg);
+
+      // Trajectory Setup 
+      _TrGrp = new THREE.Group(); _scn.add(_TrGrp);
+      _TrGrp.hist = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0x94a3b8, opacity:0.5, transparent:true}));
+      _TrGrp.pred = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0x00d4ff, opacity:0.3, transparent:true}));
+      _TrGrp.add(_TrGrp.hist); _TrGrp.add(_TrGrp.pred);
+
+      INIT_RADAR(); // Setup simulation meshes
+
+      // Control bindings bound securely 
+      const RR = () => { 
+        _ren.setSize(VC.clientWidth, VC.clientHeight, false);
+        _cam.aspect = VC.clientWidth/VC.clientHeight; _cam.updateProjectionMatrix(); 
+      };
+      window.addEventListener('resize', RR);
+
+      cv.onmousedown = (e)=>{ ST.m.isDn=true; ST.m.lstX=e.clientX; ST.m.lstY=e.clientY; };
+      cv.onmouseup = ()=> ST.m.isDn=false; cv.onmouseleave = ()=> ST.m.isDn=false;
+      cv.onmousemove = (e) => { 
+        if(!ST.m.isDn)return;
+        ST.cAm.tx -= (e.clientX-ST.m.lstX)*0.005; ST.cAm.ty = Math.max(0.1, Math.min(Math.PI-0.1, ST.cAm.ty-(e.clientY-ST.m.lstY)*0.005));
+        ST.m.lstX = e.clientX; ST.m.lstY = e.clientY; 
+      };
+      cv.onwheel = (e) => { e.preventDefault(); ST.cAm.tz = Math.max(1.15, Math.min(4.0, ST.cAm.tz + e.deltaY*0.002)); };
+
+      requestAnimationFrame(LOOP);
+      setTimeout(()=>{ gQ('boot-screen').style.opacity = '0'; setTimeout(()=>gQ('boot-screen').style.display='none',500); }, 600);
+    }
+
+    /** HELPER MATHS */
+    const toVec3 = (lt, ln, rad) => new THREE.Vector3(-rad*Math.sin((90-lt)*(Math.PI/180))*Math.cos((ln+180)*(Math.PI/180)), rad*Math.cos((90-lt)*(Math.PI/180)), rad*Math.sin((90-lt)*(Math.PI/180))*Math.sin((ln+180)*(Math.PI/180)));
+
+    /** LOOP KERNEL */
+    function LOOP() {
+      requestAnimationFrame(LOOP);
+      // Math Cam Interps
+      ST.cAm.rx+=(ST.cAm.tx-ST.cAm.rx)*0.08; ST.cAm.ry+=(ST.cAm.ty-ST.cAm.ry)*0.08; ST.cAm.rz+=(ST.cAm.tz-ST.cAm.rz)*0.08;
+      _cam.position.set(ST.cAm.rz*Math.sin(ST.cAm.ry)*Math.cos(ST.cAm.rx), ST.cAm.rz*Math.cos(ST.cAm.ry), ST.cAm.rz*Math.sin(ST.cAm.ry)*Math.sin(ST.cAm.rx));
+      _cam.lookAt(0,0,0);
+
+      const radLvl = 1+(ST.data.alt/6371);
+      const isVPos = toVec3(ST.data.lat, ST.data.lon, radLvl);
+      _isg.position.copy(isVPos);
+      _isg.rng.lookAt(_cam.position); 
+      _isg.rng.scale.setScalar(1 + 0.15*Math.sin(Date.now()*0.004));
+
+      // Overlap screen-tag tracking natively calculated 
+      const domRect = _ren.domElement;
+      let vp2 = isVPos.clone(); vp2.project(_cam);
+      const mkDOM = gQ('iss-mark');
+      if(vp2.z < 1) { 
+        mkDOM.style.display='flex';
+        mkDOM.style.transform = `translate(${Math.round((vp2.x*0.5+0.5)*domRect.clientWidth)}px, ${Math.round((-vp2.y*0.5+0.5)*domRect.clientHeight)}px)`;
+      } else { mkDOM.style.display='none'; }
+      
+      _TrGrp.visible = ST.fl.trl; 
+      PHYSICS_EVAL();
+
+      _ren.render(_scn, _cam);
+    }
+
+    /**===========================================================
+     * TELEMETRY FETCH AND UI BRIDGE 
+     ===========================================================*/
+    async function SYNC_SYS() {
+      try {
+        let rx = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
+        if(!rx.ok) throw new Error(); let js = await rx.json();
+        ST.data.lat=js.latitude; ST.data.lon=js.longitude; ST.data.alt=js.altitude; ST.data.v=js.velocity; ST.data.vis=js.visibility;
+        
+        if(ST.isSim) { ST.isSim=false; gQ('sys-status').className='status'; setHtml('sys-status','● DATA LINK ESTABLISHED'); }
+      } catch(e) {
+        // Run analytical formula to ensure ISS runs visually if networking block/drops.
+        ST.isSim=true; let tm=(Date.now()-ST.startUnix)/1000, ph=(tm/(92.6*60))*Math.PI*2;
+        ST.data.lat=51.6*Math.sin(ph); ST.data.lon=((tm/(92.6*60)*360)-180)%360; ST.data.alt=420; ST.data.v=27550;
+        gQ('sys-status').className='status sim'; setHtml('sys-status','⚠ PROTOTYPE CALC USED');
+      }
+
+      BUILD_UI(); PUSH_TRL();
+    }
+    
+    // Auto Poll
+    setInterval(SYNC_SYS, 4500); SYNC_SYS(); 
+
+    function BUILD_UI() {
+      setHtml('ui-lat', ST.data.lat.toFixed(2)+'°'); setHtml('ui-lon', ST.data.lon.toFixed(2)+'°');
+      setHtml('ui-alt', ST.data.alt.toFixed(0)); setHtml('ui-vel', (ST.data.v/3600).toFixed(2));
+      setHtml('iss-sm-alt', Math.round(ST.data.alt)+'KM ALT');
+      setHtml('ui-vis', ST.data.vis==='daylight'?'Fully Illuminated':'Eclipsed by planet');
+      setHtml('ui-orb', Math.floor((Date.now() - 911516400000)/86400000 * 15.52).toLocaleString());
+      
+      const doYr = Math.floor((Date.now() - new Date(new Date().getFullYear(),0,0))/86400000);
+      setHtml('ui-beta', (23.5*Math.sin((doYr-80)/365*2*Math.PI)+ST.data.lat*0.1).toFixed(1)+'°');
+
+      let lgX = 'Open Ocean';
+      if (Math.abs(ST.data.lat)>60) lgX='Polar Regions'; else if(ST.data.lon>-140 && ST.data.lon<-50 && ST.data.lat>10) lgX='North America airspace'; else if(ST.data.lon>-10 && ST.data.lon<40 && ST.data.lat>30) lgX='European airspace'; else if(ST.data.lon>40 && ST.data.lon<180 && ST.data.lat>10 && ST.data.lat<80) lgX='Asian landmass sector';
+      setHtml('ui-loc', lgX.toUpperCase());
+    }
+
+    function PUSH_TRL() {
+      // Historical Snake Line 
+      ST.data.hp.push({a:ST.data.lat, o:ST.data.lon}); if(ST.data.hp.length>60) ST.data.hp.shift();
+      const HPt = ST.data.hp.map(m=>toVec3(m.a,m.o, 1+ST.data.alt/6371));
+      if(HPt.length>1) { _TrGrp.hist.geometry.dispose(); _TrGrp.hist.geometry = new THREE.BufferGeometry().setFromPoints(HPt); }
+
+      // Predicted orbit ring calculation via basic rotational Kepler plane (aesthetic perfect line)
+      let PrPt=[]; const inRad = 51.6*(Math.PI/180);
+      for(let x=0; x<=90; x++){ 
+        let ga=(x/90)*Math.PI*2, oLx=ST.data.lon*(Math.PI/180); 
+        PrPt.push(new THREE.Vector3(Math.cos(ga+oLx)*Math.cos(inRad), Math.sin(ga)*Math.sin(inRad), Math.sin(ga+oLx)*Math.cos(inRad)).multiplyScalar(1+ST.data.alt/6371));
+      }
+      _TrGrp.pred.geometry.dispose(); _TrGrp.pred.geometry=new THREE.BufferGeometry().setFromPoints(PrPt);
+    }
+
+    /**===========================================================
+     * COLLISION & RADAR FRAMEWORK (Fully decoupled DOM execution)
+     ===========================================================*/
+    const R_LBS = [0x10b981, 0xf59e0b, 0xef4444, 0xdc2626]; // Grns, Amb, H-red, Crit
+    let sysMDB = []; let lcTm = performance.now()/1000;
+    
+    function INIT_RADAR() {
+      _DbGrp = new THREE.Group(); _scn.add(_DbGrp);
+      for(let c=0; c<D_LIM; c++){
+         let rdx = new THREE.Group(); rdx.rotation.set((51.6+(Math.random()*40-20))*0.017, Math.random()*6.28,0);
+         let asr = 1+((300+Math.random()*200)/6371);
+         let amsh = new THREE.Mesh(new THREE.BoxGeometry(0.005,0.005,0.005), new THREE.MeshBasicMaterial({color: R_LBS[0]}));
+         amsh.position.x=asr; rdx.add(amsh); _DbGrp.add(rdx);
+         
+         sysMDB.push({
+           hash:`ID-${Math.floor(10000+Math.random()*80000)}`, root:rdx, ms:amsh, phase: Math.random()*6, spd: (Math.random()*0.0007 + 0.0003),
+           rr: asr, oldPos: new THREE.Vector3(), tA:{ d:999, c:0, state:0 }, rep:false 
+         });
+      }
+    }
+
+    function PHYSICS_EVAL() {
+      _DbGrp.visible = ST.fl.deb; if(!ST.fl.deb) return;
+      let nzT = performance.now()/1000; let difS = nzT-lcTm; lcTm = nzT; if(difS===0)return;
+
+      let rISSV = new THREE.Vector3(); _isg.children[0].getWorldPosition(rISSV);
+      let H_TH = null; // Store highest critical value
+      
+      sysMDB.forEach(o => {
+         o.phase += (o.spd * 0.5); o.ms.position.set(o.rr*Math.cos(o.phase), o.rr*Math.sin(o.phase), 0);
+         let cvP = new THREE.Vector3(); o.ms.getWorldPosition(cvP);
+         let dCalc = cvP.distanceTo(rISSV)*6371; 
+         let rvCalc = cvP.clone().sub(o.oldPos).length() / difS * 6371; o.oldPos.copy(cvP);
+
+         o.tA.d = dCalc; o.tA.c = rvCalc; 
+         // Assign State Tier natively mapped via range limits 
+         o.tA.state = dCalc<100?3:dCalc<350?2:dCalc<1000?1:0;
+         o.ms.material.color.setHex(R_LBS[o.tA.state]); o.ms.scale.setScalar(o.tA.state===3?4:o.tA.state===2?2:1);
+         if(o.tA.state>0 && (!H_TH || o.tA.d < H_TH.tA.d)) H_TH = o; // Capture supreme target  
+      });
+
+      // Synchronize DOM elements independently inside render throttle 
+      RADAR_UI_BIND(H_TH); 
+    }
+
+    // Prevents CSS thrashing and UI jitter natively 
+    let _lStateDomCache = -1;
+    
+    function RADAR_UI_BIND(bZ) {
+       // Single Master Panel Logic 
+       const iBnr = gQ('s-banner'), sCrt = gQ('s-icn'), sMsg = gQ('s-msg');
+       let cq = 0, mkTList = '';
+
+       sysMDB.forEach(z=>{
+          if(z.tA.state>0){
+            cq++;
+            let nmLvl = z.tA.state===3?'CRITICAL INTERCEPT':z.tA.state===2?'EVALUATION REQUIRED':'CAUTION ZONE';
+            let lcol = z.tA.state===3?'var(--c-crit)':z.tA.state===2?'var(--c-high)':'var(--c-caution)';
+            mkTList+=`<div class="obj-card" style="border-left-color:${lcol}"><div style="display:flex; justify-content:space-between; margin-bottom:4px"><b style="color:white;font-family:var(--font-mon)">${z.hash}</b><b style="color:${lcol}">${nmLvl}</b></div><div>EST SEPARATION: <b style="color:white">${Math.round(z.tA.d)}km</b></div></div>`;
+          }
+       });
+
+       setHtml('alert-board', cq>0? mkTList : '<div style="font-size:11px;color:var(--text-sec);font-style:italic">Surrounding trajectory mapping indicates total vector clearance. No collision thresholds engaged.</div>');
+       setHtml('queue-size', `${cq}/45`);
+
+       if(!bZ) {
+         if(_lStateDomCache!==0){ 
+            iBnr.className='threat-banner'; sCrt.textContent='✓'; setHtml('s-msg','TRACKING ZONE SECURE'); 
+            ['cp-id','cp-dst','cp-vel','cp-cpa'].forEach(y=>setHtml(y, '--'));
+            _lStateDomCache=0;
+         }
+       } else {
+         let nx=bZ.tA.state===3?'red':bZ.tA.state===2?'amber':'';
+         if(_lStateDomCache!==bZ.tA.state){
+            iBnr.className=`threat-banner ${nx}`; sCrt.textContent='!'; 
+            setHtml('s-msg', bZ.tA.state===3?'SEVERE CONJUNCTION ESTIMATE':'EVALUATING INGRESS VECTOR'); 
+            _lStateDomCache = bZ.tA.state;
+         }
+         // Soft HTML numerical push preventing node reallocates
+         setHtml('cp-id', bZ.hash); setHtml('cp-dst', bZ.tA.d.toFixed(1)+' km');
+         setHtml('cp-vel', (bZ.tA.c*3).toFixed(2)+' km/s'); setHtml('cp-cpa', 'T- '+(bZ.tA.d/ (bZ.tA.c*4)).toFixed(0) + ' min');
+       }
+    }
+
+    /** AI CONTROLS */
+    function pushAI() {
+      let bX = gQ('ai-in'), tx = bX.value.trim(); if(!tx) return; bX.value='';
+      const cvT = gQ('ai-chat');
+      cvT.innerHTML += `<div style="color:var(--text-sec);">CMD> ${tx}</div>`;
+      setTimeout(()=>{
+        let outX = 'Data protocol captured via console bounds. Standard processing active.';
+        let dxT = tx.toLowerCase();
+        if(dxT.includes('orbit')) outX=`Currently flying 51.6 degrees crossing ${gQ('ui-loc').textContent.toLowerCase()}. Alt held nominally.`;
+        if(dxT.includes('collision')||dxT.includes('risk')||dxT.includes('threat')) outX=`Surveillance routines loaded. Tracking active items. Reference primary HUD interface right sector.`;
+        
+        cvT.innerHTML+= `<div style="color:var(--c-neon);">ARIA> ${outX}</div>`; cvT.scrollTop = cvT.scrollHeight;
+      },450);
+    }
+    
+    // Boot Initialization Call
+    window.addEventListener('load', INIT_GLB);
+  </script>
+</body>
+</html>
