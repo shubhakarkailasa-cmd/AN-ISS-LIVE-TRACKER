@@ -257,7 +257,8 @@
      * 3D GLOBE ENGINE (REBUILT FOR 60FPS DIGITAL TWIN AESTHETIC)
      ===========================================================*/
     let _scn, _cam, _ren, _isg;
-    let _TrGrp, _DbGrp;
+    let _TrGrp, _DbGrp, _earthGrp;
+    const EARTH_SPIN_PERIOD = 120; // seconds per full revolution (stylized, always-live)
     const D_LIM = 45; // Max space objects mapped 
 
     function INIT_GLB() {
@@ -271,32 +272,37 @@
       _ren.setPixelRatio(window.devicePixelRatio);
       _ren.setSize(VC.clientWidth, VC.clientHeight, false);
 
-      /** DESIGN: Wireframe Tactical Earth (Zero load-times, pure performant GL geometry) */
-      
-      // The wireframe structure 
+      /** DESIGN: Textured live-rotating Earth with tactical wireframe overlay */
+
+      // Everything geography-locked (surface, ISS ground track) spins together as one rigid body
+      _earthGrp = new THREE.Group(); _scn.add(_earthGrp);
+
+      // Real Earth day-map textured sphere
+      const earthTex = new THREE.TextureLoader().load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
+      const glbMat = new THREE.MeshBasicMaterial({ map: earthTex });
+      const glbM = new THREE.Mesh(new THREE.SphereGeometry(0.985, 48, 32), glbMat);
+      _earthGrp.add(glbM);
+
+      // Tactical wireframe shell on top of the textured globe
       const ewMat = new THREE.MeshBasicMaterial({ color: 0x0ea5e9, wireframe: true, transparent: true, opacity: 0.15 });
       const earM = new THREE.Mesh(new THREE.SphereGeometry(1.0, 36, 18), ewMat);
-      
-      // Deep inner solid core so wireframe looks spherical and solid 
-      const crMat = new THREE.MeshBasicMaterial({ color: 0x010309 }); 
-      const corM = new THREE.Mesh(new THREE.SphereGeometry(0.98, 16, 16), crMat);
-      
-      _scn.add(earM); _scn.add(corM);
+      _earthGrp.add(earM);
 
       // Lat/Lon Rings for flair
       const equatGeo = new THREE.BufferGeometry().setFromPoints(new Array(65).fill(0).map((_,i)=>new THREE.Vector3(Math.cos(i/64*Math.PI*2),0,Math.sin(i/64*Math.PI*2))));
-      _scn.add(new THREE.Line(equatGeo, new THREE.LineBasicMaterial({color: 0x0ea5e9, transparent:true, opacity:0.3})));
+      _earthGrp.add(new THREE.Line(equatGeo, new THREE.LineBasicMaterial({color: 0x0ea5e9, transparent:true, opacity:0.3})));
 
-      /** THE ISS DOT **/
+      /** THE ISS DOT + 3D MODEL ** (geography-locked, so it rides the rotating globe) */
       _isg = new THREE.Group();
-      _isg.add(new THREE.Mesh(new THREE.SphereGeometry(0.015,12,12), new THREE.MeshBasicMaterial({color: 0xffffff}))); // ISS core
-      // Glow Ring 
-      _isg.rng = new THREE.Mesh(new THREE.RingGeometry(0.02, 0.026, 32), new THREE.MeshBasicMaterial({color: 0x00d4ff, transparent: true, side: THREE.DoubleSide, opacity:0.8}));
+      _isg.add(new THREE.Mesh(new THREE.SphereGeometry(0.008,12,12), new THREE.MeshBasicMaterial({color: 0xffffff}))); // ISS core beacon
+      _isg.add(buildISSModel());
+      // Glow Ring (targeting reticle framing the model)
+      _isg.rng = new THREE.Mesh(new THREE.RingGeometry(0.034, 0.04, 32), new THREE.MeshBasicMaterial({color: 0x00d4ff, transparent: true, side: THREE.DoubleSide, opacity:0.8}));
       _isg.add(_isg.rng);
-      _scn.add(_isg);
+      _earthGrp.add(_isg);
 
-      // Trajectory Setup 
-      _TrGrp = new THREE.Group(); _scn.add(_TrGrp);
+      // Trajectory Setup (geography-locked, rides the rotating globe with the ISS)
+      _TrGrp = new THREE.Group(); _earthGrp.add(_TrGrp);
       _TrGrp.hist = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0x94a3b8, opacity:0.5, transparent:true}));
       _TrGrp.pred = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0x00d4ff, opacity:0.3, transparent:true}));
       _TrGrp.add(_TrGrp.hist); _TrGrp.add(_TrGrp.pred);
@@ -326,31 +332,77 @@
     /** HELPER MATHS */
     const toVec3 = (lt, ln, rad) => new THREE.Vector3(-rad*Math.sin((90-lt)*(Math.PI/180))*Math.cos((ln+180)*(Math.PI/180)), rad*Math.cos((90-lt)*(Math.PI/180)), rad*Math.sin((90-lt)*(Math.PI/180))*Math.sin((ln+180)*(Math.PI/180)));
 
+    /** Stylized low-poly ISS: central truss, lab/hab module cluster, paired solar array wings */
+    function buildISSModel() {
+      const g = new THREE.Group();
+      const trussMat = new THREE.MeshBasicMaterial({ color: 0xcbd5e1 });
+      const modMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9 });
+      const panelMat = new THREE.MeshBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+
+      // Main integrated truss (long spine)
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.0016, 0.0016), trussMat));
+
+      // Module cluster strung perpendicular through the truss center
+      const modGeo = new THREE.CylinderGeometry(0.0028, 0.0028, 0.009, 8);
+      [-0.009, 0, 0.009].forEach(z => {
+        const m = new THREE.Mesh(modGeo, modMat);
+        m.rotation.x = Math.PI/2; m.position.z = z;
+        g.add(m);
+      });
+
+      // Paired solar array wings at each end of the truss
+      const panelGeo = new THREE.BoxGeometry(0.003, 0.0225, 0.009);
+      [-0.024, 0.024].forEach(x => {
+        [-0.0125, 0.0125].forEach(zOff => {
+          const p = new THREE.Mesh(panelGeo, panelMat);
+          p.position.set(x, 0.0125, zOff);
+          g.add(p);
+        });
+      });
+
+      return g;
+    }
+
     /** LOOP KERNEL */
+    let _lastT = null, _issSpin = 0;
     function LOOP() {
       requestAnimationFrame(LOOP);
+      const nowT = performance.now()/1000; const dt = _lastT===null?0:(nowT-_lastT); _lastT = nowT;
+
       // Math Cam Interps
       ST.cAm.rx+=(ST.cAm.tx-ST.cAm.rx)*0.08; ST.cAm.ry+=(ST.cAm.ty-ST.cAm.ry)*0.08; ST.cAm.rz+=(ST.cAm.tz-ST.cAm.rz)*0.08;
       _cam.position.set(ST.cAm.rz*Math.sin(ST.cAm.ry)*Math.cos(ST.cAm.rx), ST.cAm.rz*Math.cos(ST.cAm.ry), ST.cAm.rz*Math.sin(ST.cAm.ry)*Math.sin(ST.cAm.rx));
       _cam.lookAt(0,0,0);
 
+      // Live Earth rotation — continuous, real-time-driven spin (geography-locked ISS + trail ride along)
+      _earthGrp.rotation.y += dt * (2*Math.PI/EARTH_SPIN_PERIOD);
+
       const radLvl = 1+(ST.data.alt/6371);
       const isVPos = toVec3(ST.data.lat, ST.data.lon, radLvl);
       _isg.position.copy(isVPos);
-      _isg.rng.lookAt(_cam.position); 
+
+      // Orient the model to sit naturally on the local surface, with a slow live tumble on its own axis
+      _issSpin += dt*0.35;
+      const alignQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), isVPos.clone().normalize());
+      const spinQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), _issSpin);
+      _isg.quaternion.copy(alignQ).multiply(spinQ);
+
+      _isg.rng.lookAt(_cam.position);
       _isg.rng.scale.setScalar(1 + 0.15*Math.sin(Date.now()*0.004));
 
-      // Overlap screen-tag tracking natively calculated 
+      // Overlap screen-tag tracking natively calculated
       const domRect = _ren.domElement;
-      let vp2 = isVPos.clone(); vp2.project(_cam);
+      _isg.updateWorldMatrix(true, false);
+      let vp2 = _isg.getWorldPosition(new THREE.Vector3()); vp2.project(_cam);
       const mkDOM = gQ('iss-mark');
-      if(vp2.z < 1) { 
+      if(vp2.z < 1) {
         mkDOM.style.display='flex';
         mkDOM.style.transform = `translate(${Math.round((vp2.x*0.5+0.5)*domRect.clientWidth)}px, ${Math.round((-vp2.y*0.5+0.5)*domRect.clientHeight)}px)`;
       } else { mkDOM.style.display='none'; }
-      
-      _TrGrp.visible = ST.fl.trl; 
+
+      _TrGrp.visible = ST.fl.trl;
       PHYSICS_EVAL();
+
 
       _ren.render(_scn, _cam);
     }
