@@ -5,7 +5,7 @@
 
 👉 ## 🚀 Live Demo
 
-🔗 https://orbital-sentinel.netlify.app/
+🔗 https://agent-6a79eefa8ecabd559d6401bd--orbital-sentinel.netlify.app
 
 ## 📌 About
 
